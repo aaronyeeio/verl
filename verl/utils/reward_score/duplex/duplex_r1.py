@@ -18,8 +18,8 @@ from typing import List
 from math_verify import parse, verify
 
 OPENAI_API_KEY = 'sk-xxx'
-OPENAI_MODEL = "Qwen/Qwen2.5-7B-Instruct"
-OPENAI_BASE_URL = "http://127.0.0.1:10002/v1"
+OPENAI_MODEL = "Qwen/Qwen3-32B-AWQ"
+OPENAI_BASE_URL = "http://127.0.0.1:10000/v1"
 
 def compute_answer_score(messages: List[dict], ground_truth: str) -> float:
     """
@@ -141,12 +141,18 @@ Rating scale:
             prompt = create_transition_prompt(outputs[i], outputs[i + 1], i + 1)
             requests.append({
                 "model": OPENAI_MODEL,
-                                 "messages": [
-                     {"role": "system", "content": "You are a text fluency evaluation expert. Your task is to rate the naturalness of text transitions. You MUST respond with ONLY a single decimal number between 0.0 and 1.0 (e.g., 0.8, 0.5, 1.0). Do NOT include any explanations, words, or additional text. Output format: [number only]"},
-                     {"role": "user", "content": prompt}
-                 ],
-                "temperature": 0.1,  # Low temperature for consistent evaluation
-                "max_tokens": 10  # We only need a single number
+                "messages": [
+                    {"role": "system", "content": "You are a text fluency evaluation expert. Your task is to rate the naturalness of text transitions. You MUST respond with ONLY a single decimal number between 0.0 and 1.0 (e.g., 0.8, 0.5, 1.0). Do NOT include any explanations, words, or additional text. Output format: [number only]"},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 10,  # We only need a single number
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "presence_penalty": 1.5,
+                "extra_body": {
+                    "top_k": 20,
+                    "chat_template_kwargs": {"enable_thinking": True},
+                }
             })
         
         # Execute all requests (in sequence for now, could be made parallel)

@@ -136,7 +136,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_dir", default="~/data/duplex_r1")
     parser.add_argument("--hdfs_dir", default=None)
-    parser.add_argument("--tokenizer_path", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--tokenizer_path", default="Qwen/Qwen2.5-3B-Instruct")
     parser.add_argument("--demo", action="store_true", help="Run typewriter demo only and exit.")
 
     args = parser.parse_args()
