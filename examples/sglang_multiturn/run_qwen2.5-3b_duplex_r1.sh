@@ -38,7 +38,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.name=sglang \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
-    actor_rollout_ref.rollout.n=16 \
+    actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$MICRO_BATCH_SIZE \
     actor_rollout_ref.ref.fsdp_config.param_offload=$OFFLOAD \
     algorithm.use_kl_in_reward=False \
@@ -48,7 +48,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name='qwen2.5-3b_duplex_r1-sgl-multi-n16' \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=-1 \
+    trainer.save_freq=20 \
     trainer.test_freq=20 \
     data.train_files=$HOME/data/duplex_r1/train.parquet \
     data.val_files=$HOME/data/duplex_r1/test.parquet \
