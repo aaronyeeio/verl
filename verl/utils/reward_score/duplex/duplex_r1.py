@@ -296,7 +296,7 @@ def compute_time_to_final_answer_score(messages: List[dict], ref_count: int):
     return final_score
 
 
-def compute_score(messages: List[dict], ground_truth: str, ref_count: int, stage: str = "format") -> float:
+def compute_score(messages: List[dict], ground_truth: str, ref_count: int, stage: str = "final") -> float:
     """
     Compute the final reward score by combining sub-scores with weighted average.
     Args:
@@ -315,18 +315,19 @@ def compute_score(messages: List[dict], ground_truth: str, ref_count: int, stage
     if stage == "format":
         # Only use format and fluency scores
         return 0.7 * format_score + 0.3 * fluency_score
-    # For final stage, compute all scores
-    answer_score = compute_answer_score(messages, ground_truth)
-    long_wait_alignment_score = compute_long_wait_alignment_score(messages)
-    time_to_final_answer_score = compute_time_to_final_answer_score(messages, ref_count)
-    # Weighted sum according to user-confirmed weights
-    return (
-        0.35 * answer_score +
-        0.15 * format_score +
-        0.10 * fluency_score +
-        0.15 * long_wait_alignment_score +
-        0.25 * time_to_final_answer_score
-    )
+    elif stage == "final":
+        # For final stage, compute all scores
+        answer_score = compute_answer_score(messages, ground_truth)
+        long_wait_alignment_score = compute_long_wait_alignment_score(messages)
+        time_to_final_answer_score = compute_time_to_final_answer_score(messages, ref_count)
+        # Weighted sum according to user-confirmed weights
+        return (
+            0.35 * answer_score +
+            0.15 * format_score +
+            0.10 * fluency_score +
+            0.15 * long_wait_alignment_score +
+            0.25 * time_to_final_answer_score
+        )
 
 
 def test_compute_answer_score():
