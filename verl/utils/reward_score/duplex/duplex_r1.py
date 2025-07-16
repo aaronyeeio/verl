@@ -151,7 +151,7 @@ Rating scale:
                 "presence_penalty": 1.5,
                 "extra_body": {
                     "top_k": 20,
-                    "chat_template_kwargs": {"enable_thinking": True},
+                    "chat_template_kwargs": {"enable_thinking": False},
                 }
             })
         
