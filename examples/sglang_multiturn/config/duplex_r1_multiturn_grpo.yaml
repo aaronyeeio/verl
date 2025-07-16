@@ -18,4 +18,3 @@ actor_rollout_ref:
     name: sglang
     multi_turn:
       enable: True
-      max_user_turns: 2

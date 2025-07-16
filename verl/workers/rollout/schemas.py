@@ -57,6 +57,7 @@ class Message(BaseModel):
     role: str
     content: str | Dict[str, Any] | List[Dict[str, Any]]
     tool_calls: Optional[List[OpenAIFunctionToolCall]] = None
+    meta_info: Optional[Dict[str, Any]] = None
 
 
 class AsyncRolloutRequestStateEnum(str, Enum):
@@ -392,8 +393,9 @@ class AsyncRolloutRequest(BaseModel):
         processing_class: Union[PreTrainedTokenizer, PreTrainedTokenizerFast, ProcessorMixin],
         content: str,
         tool_calls: Optional[List[OpenAIFunctionToolCall]] = None,
+        meta_info: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self.messages.append(Message(role="assistant", content=content, tool_calls=tool_calls))
+        self.messages.append(Message(role="assistant", content=content, tool_calls=tool_calls, meta_info=meta_info))
 
         messages = [*BASE_CHAT_HISTORY, self.messages[-1]]
         tools = [tool.model_dump() for tool in self.tool_schemas] if self.tool_schemas else None

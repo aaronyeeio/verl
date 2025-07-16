@@ -1,0 +1,4 @@
+interaction:
+  - name: "duplex_r1"
+    class_name: "verl.interactions.duplex_r1.DuplexR1Interaction"
+    config: {}

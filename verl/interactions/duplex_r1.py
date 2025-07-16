@@ -19,15 +19,14 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from verl.utils.reward_score import gsm8k
+from verl.utils.reward_score.duplex import duplex_r1
 
 from .base import BaseInteraction
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
-
-class Gsm8kInteraction(BaseInteraction):
+class DuplexR1Interaction(BaseInteraction):
     """A demo interaction for calculating the reward of gsm8k.
 
     - `start_interaction`: start a interaction instance for a trajectory.
@@ -38,51 +37,48 @@ class Gsm8kInteraction(BaseInteraction):
 
     def __init__(self, config: dict):
         super().__init__(config)
-        print(f"Gsm8kInteraction config: {config}")
+        print(f"DuplexR1Interaction config: {config}")
         self._instance_dict = {}
 
     async def start_interaction(
-        self, instance_id: Optional[str], current_turn_data: dict, ground_truth: Optional[str] = None, **kwargs
+        self, instance_id: Optional[str], current_turn_data: dict, **interaction_kwargs
     ) -> str:
         if instance_id is None:
             instance_id = str(uuid4())
-        self._instance_dict[instance_id] = {
-            "response": "",
-            "ground_truth": ground_truth,
-            "reward": 0.0,
-        }
+        self._instance_dict[instance_id] = interaction_kwargs
+        user_input_info = self._instance_dict[instance_id]["user_input_info"]
+        current_turn_data["request_sampling_params"]["max_new_tokens"] = user_input_info[0]["max_output"]
         return instance_id
 
     async def generate_response(
-        self, instance_id: str, current_turn_data: dict, messages: List[Dict[str, Any]], **kwargs
+        self, instance_id: str, current_turn_data: dict, messages: List[Dict[str, Any]], **interaction_kwargs
     ) -> Tuple[bool, str, float, dict]:
-        content = ""
-        for i in range(len(messages) - 1, -1, -1):
-            item = messages[i]
-            if item.get("role") == "assistant":
-                content = item.get("content")
-                break
-
-        self._instance_dict[instance_id]["response"] = content
-
-        reward = await self.calculate_score(instance_id)
-        if reward == 1.0:
-            response = "Your response is correct!"
-            should_terminate_sequence = True
-        else:
-            response = "Your response is incorrect! You need to reflect on your answer and try again."
+        user_input_info = self._instance_dict[instance_id]["user_input_info"]
+        for i, msg in enumerate(messages):
+            if msg["role"] == "user" and i < len(user_input_info):
+                msg["user_input_info"] = user_input_info[i]
+        
+        user_turns = current_turn_data["user_turns"]
+        
+        if user_turns < len(user_input_info):
+            # set `max_new_tokens` for the next assistant generation
+            current_turn_data["request_sampling_params"]["max_new_tokens"] = user_input_info[user_turns]["max_output"]
+            response = user_input_info[user_turns]["input_text"]
             should_terminate_sequence = False
+        else:
+            response = ""
+            should_terminate_sequence = True
+
+        reward = await self.calculate_score(instance_id, messages)
 
         return should_terminate_sequence, response, reward, {}
 
-    async def calculate_score(self, instance_id: str, **kwargs) -> float:
-        return gsm8k.compute_score(
-            self._instance_dict[instance_id]["response"],
+    async def calculate_score(self, instance_id: str, messages: List[Dict[str, Any]]) -> float:
+        return duplex_r1.compute_score(
+            messages,
             self._instance_dict[instance_id]["ground_truth"],
-            method="strict",
-            format_score=0.0,
-            score=1.0,
+            self._instance_dict[instance_id]["generations_max_token"]
         )
 
-    async def finalize_interaction(self, instance_id: str, **kwargs) -> None:
+    async def finalize_interaction(self, instance_id: str) -> None:
         del self._instance_dict[instance_id]

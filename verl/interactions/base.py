@@ -22,7 +22,7 @@ class BaseInteraction:
         self.config = config
         self.name: str = config.get("name", "interaction_agent")  # More general agent default role name
 
-    async def start_interaction(self, instance_id: Optional[str] = None, **kwargs) -> str:
+    async def start_interaction(self, instance_id: Optional[str], current_turn_data: dict, **kwargs) -> str:
         """Create a tool instance.
 
         Args:
@@ -37,7 +37,7 @@ class BaseInteraction:
             return instance_id
 
     async def generate_response(
-        self, instance_id: str, messages: List[Dict[str, Any]], **kwargs
+        self, instance_id: str, current_turn_data: dict, messages: List[Dict[str, Any]], **kwargs
     ) -> Tuple[bool, str, float, Dict[str, Any]]:  # More clear response generation method
         """
         Generates a response for the current turn of interaction.

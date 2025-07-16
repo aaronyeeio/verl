@@ -24,6 +24,7 @@ def default_compute_score(
     sandbox_fusion_url=None,
     concurrent_semaphore=None,
     memory_limit_mb=None,
+    messages=None,
 ):
     """Compute the score for a given solution based on the data source.
 
@@ -101,6 +102,17 @@ def default_compute_score(
         from . import search_r1_like_qa_em
 
         res = search_r1_like_qa_em.compute_score(solution_str, ground_truth)
+
+    elif data_source == "humanify/duplex_r1":
+        from .duplex import duplex_r1
+        
+        interaction_kwargs = extra_info["interaction_kwargs"]
+        user_input_info = interaction_kwargs["user_input_info"]
+        for i, msg in enumerate(messages):
+            if msg["role"] == "user" and i < len(user_input_info):
+                msg["user_input_info"] = user_input_info[i] if i < len(user_input_info) else {}
+
+        res = duplex_r1.compute_score(messages, interaction_kwargs["ground_truth"], interaction_kwargs["generations_max_token"])
 
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")

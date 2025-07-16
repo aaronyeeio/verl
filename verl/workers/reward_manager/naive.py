@@ -79,12 +79,16 @@ class NaiveRewardManager:
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
             num_turns = data_item.non_tensor_batch.get("__num_turns__", None)
             extra_info["num_turns"] = num_turns
+            messages = [
+                msg.model_dump() for msg in data_item.non_tensor_batch["messages"].get("messages", [])
+            ]
 
             score = self.compute_score(
                 data_source=data_source,
                 solution_str=response_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
+                messages=messages,
             )
 
             if isinstance(score, dict):
