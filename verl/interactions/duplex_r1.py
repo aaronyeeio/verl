@@ -83,20 +83,7 @@ class DuplexR1Interaction(BaseInteraction):
             response = ""
             should_terminate_sequence = False
 
-        reward = await self.calculate_score(
-            messages=messages,
-            ground_truth=interaction_kwargs["ground_truth"],
-            ref_count=interaction_kwargs["avg_gen_tokens"],
-            max_answer_count=interaction_kwargs["max_answer_count"],
-            answer_count_base_score=interaction_kwargs["answer_count_base_score"],
-            ttfa_ratio_min=interaction_kwargs["ttfa_ratio_min"],
-            ttfa_ratio_max=interaction_kwargs["ttfa_ratio_max"],
-            ttfa_ratio_max_reward_point=interaction_kwargs["ttfa_ratio_max_reward_point"],
-            ttfa_ratio_base_score=interaction_kwargs["ttfa_ratio_base_score"],
-            stage=interaction_kwargs["stage"]
-        )
-
-        return should_terminate_sequence, response, reward, {}
+        return should_terminate_sequence, response, 0.0, {}
 
     async def calculate_score(self, **kwargs) -> float:
         return duplex_r1.compute_score(**kwargs)
