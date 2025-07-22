@@ -51,34 +51,55 @@ class DuplexR1Interaction(BaseInteraction):
         return instance_id
 
     async def generate_response(
-        self, instance_id: str, current_turn_data: dict, messages: List[Dict[str, Any]], **interaction_kwargs
+        self, instance_id: str, current_turn_data: dict, messages: List[Dict[str, Any]], **_interaction_kwargs
     ) -> Tuple[bool, str, float, dict]:
-        user_input_info = self._instance_dict[instance_id]["user_input_info"]
-        for i, msg in enumerate(messages):
-            if msg["role"] == "user" and i < len(user_input_info):
-                msg["user_input_info"] = user_input_info[i]
+        interaction_kwargs = self._instance_dict[instance_id]
+        user_input_info = interaction_kwargs["user_input_info"]
+        messages = duplex_r1.append_user_input_info(messages, user_input_info)
         
         user_turns = current_turn_data["user_turns"]
-        
-        if user_turns < len(user_input_info):
+
+        answer_count_score = duplex_r1.compute_answer_count_score(messages, interaction_kwargs["max_answer_count"])
+        answer_score = duplex_r1.compute_answer_score(messages, interaction_kwargs["ground_truth"])
+
+        if answer_count_score == 0.0 or answer_score == 1.0:
+            # Reached the maximum answer count or the answer is correct
+            response = ""
+            should_terminate_sequence = True
+        elif self._instance_dict[instance_id].get("is_last_round", False):
+            response = ""
+            should_terminate_sequence = True
+        elif user_turns >= interaction_kwargs["max_user_round"] - 1:
+            # Reached the maximum user round
+            response = "You have reached the maximum rounds of reasoning. You MUST output your final answer NOW using the format: <answer>YOUR_MATH_ANSWER_WITHOUT_ANY_OTHER_TEXT</answer>."
+            self._instance_dict[instance_id]["is_last_round"] = True
+            should_terminate_sequence = False
+        elif user_turns < len(user_input_info):
             # set `max_new_tokens` for the next assistant generation
             current_turn_data["request_sampling_params"]["max_new_tokens"] = user_input_info[user_turns]["max_output"]
             response = user_input_info[user_turns]["input_text"]
             should_terminate_sequence = False
         else:
             response = ""
-            should_terminate_sequence = True
+            should_terminate_sequence = False
 
-        reward = await self.calculate_score(instance_id, messages)
+        reward = await self.calculate_score(
+            messages=messages,
+            ground_truth=interaction_kwargs["ground_truth"],
+            ref_count=interaction_kwargs["avg_gen_tokens"],
+            max_answer_count=interaction_kwargs["max_answer_count"],
+            answer_count_base_score=interaction_kwargs["answer_count_base_score"],
+            ttfa_ratio_min=interaction_kwargs["ttfa_ratio_min"],
+            ttfa_ratio_max=interaction_kwargs["ttfa_ratio_max"],
+            ttfa_ratio_max_reward_point=interaction_kwargs["ttfa_ratio_max_reward_point"],
+            ttfa_ratio_base_score=interaction_kwargs["ttfa_ratio_base_score"],
+            stage=interaction_kwargs["stage"]
+        )
 
         return should_terminate_sequence, response, reward, {}
 
-    async def calculate_score(self, instance_id: str, messages: List[Dict[str, Any]]) -> float:
-        return duplex_r1.compute_score(
-            messages,
-            self._instance_dict[instance_id]["ground_truth"],
-            self._instance_dict[instance_id]["generations_max_token"]
-        )
+    async def calculate_score(self, **kwargs) -> float:
+        return duplex_r1.compute_score(**kwargs)
 
     async def finalize_interaction(self, instance_id: str) -> None:
         del self._instance_dict[instance_id]

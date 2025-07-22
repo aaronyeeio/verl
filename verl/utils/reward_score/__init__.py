@@ -108,11 +108,19 @@ def default_compute_score(
         
         interaction_kwargs = extra_info["interaction_kwargs"]
         user_input_info = interaction_kwargs["user_input_info"]
-        for i, msg in enumerate(messages):
-            if msg["role"] == "user" and i < len(user_input_info):
-                msg["user_input_info"] = user_input_info[i] if i < len(user_input_info) else {}
+        messages = duplex_r1.append_user_input_info(messages, user_input_info)
 
-        res = duplex_r1.compute_score(messages, interaction_kwargs["ground_truth"], interaction_kwargs["generations_max_token"])
+        res = duplex_r1.compute_score(messages,
+                                      interaction_kwargs["ground_truth"],
+                                      interaction_kwargs["avg_gen_tokens"],
+                                      interaction_kwargs["max_answer_count"],
+                                      interaction_kwargs["answer_count_base_score"],
+                                      interaction_kwargs["ttfa_ratio_min"],
+                                      interaction_kwargs["ttfa_ratio_max"],
+                                      interaction_kwargs["ttfa_ratio_max_reward_point"],
+                                      interaction_kwargs["ttfa_ratio_base_score"],
+                                      interaction_kwargs["stage"],
+                                      log=True)
 
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
