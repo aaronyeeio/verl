@@ -22,8 +22,8 @@ import openai
 from math_verify import parse, verify
 
 OPENAI_API_KEY = 'sk-xxx'
-OPENAI_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
-OPENAI_BASE_URL = "http://127.0.0.1:10002/v1"
+OPENAI_MODEL = "Qwen/Qwen3-32B-AWQ"
+OPENAI_BASE_URL = "http://127.0.0.1:10000/v1"
 
 # Logging configuration
 LOG_INTERVAL_SECONDS = float(os.getenv("DUPLEX_LOG_INTERVAL_SECONDS", "60"))  # Log every N seconds
