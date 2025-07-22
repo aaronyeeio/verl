@@ -1009,7 +1009,14 @@ class SGLangRollout(BaseRollout):
     async def _handle_engine_generate(
         self, generation_prompt_ids: list[int], sampling_params: dict, image_data: Optional[list[Any]] = None
     ) -> dict:
-        max_new_tokens = min(self.config.response_length, self.config.max_model_len - len(generation_prompt_ids) - 1, sampling_params["max_new_tokens"])
+        max_new_tokens = min(self.config.response_length, self.config.max_model_len - len(generation_prompt_ids) - 1)
+
+        max_new_tokens_override = False
+        if sampling_params["max_new_tokens"] != self.config.response_length and \
+                sampling_params["max_new_tokens"] < max_new_tokens:
+            max_new_tokens_override = True
+            max_new_tokens = sampling_params["max_new_tokens"]
+
         kwargs = sampling_params.copy()
         kwargs["max_new_tokens"] = max_new_tokens
         kwargs["n"] = 1  # group size is supported in preprocess
@@ -1019,6 +1026,22 @@ class SGLangRollout(BaseRollout):
             return_logprob=False,
             image_data=image_data,
         )
+
+        if max_new_tokens_override:
+            logger.info(
+                f"max_new_tokens_override is {max_new_tokens_override}, max_new_tokens is {max_new_tokens}, "
+                f"sampling_params['max_new_tokens'] is {sampling_params['max_new_tokens']}, "
+                f"output['meta_info']['completion_tokens'] is {output['meta_info']['completion_tokens']}, "
+                f"output['meta_info']['finish_reason']['type'] is {output['meta_info']['finish_reason']['type']}"
+            )
+
+            if output["meta_info"]["completion_tokens"] == sampling_params["max_new_tokens"] and \
+                    output["meta_info"]["finish_reason"]["type"] == "length":
+                output["meta_info"]["finish_reason"]["type"] = "stop"
+            
+            # reset the max_new_tokens to the original value
+            sampling_params["max_new_tokens"] = self.config.response_length
+
         return output
 
     async def _handle_pending_state(self, _req: AsyncRolloutRequest, current_turn_data: dict) -> AsyncRolloutRequest:
