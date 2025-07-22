@@ -27,16 +27,12 @@ OPENAI_BASE_URL = "http://127.0.0.1:10000/v1"
 
 # Logging configuration
 LOG_INTERVAL_SECONDS = float(os.getenv("DUPLEX_LOG_INTERVAL_SECONDS", "60"))  # Log every N seconds
-WANDB_PROJECT_NAME = os.getenv("WANDB_PROJECT_NAME", "duplex-reward-scoring")
-WANDB_EXPERIMENT_NAME = os.getenv("WANDB_EXPERIMENT_NAME", "duplex-r1-experiment")
 SAVE_DETAILED_SAMPLES = os.getenv("SAVE_DETAILED_SAMPLES", "true").lower() == "true"  # Whether to save detailed samples to local files
 DETAILED_SAMPLES_DIR = os.getenv("DETAILED_SAMPLES_DIR", "logs/duplex_r1_detailed_samples")  # Directory to save detailed sample files
 
 # Global variables for tracking logging state
 _log_call_count = 0
 _last_log_time = 0.0
-_wandb_initialized = False
-_wandb_run = None
 
 # Real-time statistics tracking (no memory accumulation)
 class RunningStats:
@@ -86,66 +82,68 @@ class RunningStats:
 # Global running statistics for each score type
 _score_stats = defaultdict(RunningStats)
 
-def _init_wandb():
-    """Initialize wandb if not already initialized."""
-    global _wandb_initialized, _wandb_run
-    
-    if not _wandb_initialized:
-        try:
-            import wandb
-            _wandb_run = wandb.init(
-                project=WANDB_PROJECT_NAME,
-                name=WANDB_EXPERIMENT_NAME,
-                config={
-                    "log_interval_seconds": LOG_INTERVAL_SECONDS,
-                    "openai_model": OPENAI_MODEL,
-                    "openai_base_url": OPENAI_BASE_URL
-                }
-            )
-            _wandb_initialized = True
-            print(f"Wandb initialized: project={WANDB_PROJECT_NAME}, experiment={WANDB_EXPERIMENT_NAME}")
-        except ImportError:
-            print("Warning: wandb not available. Install with 'pip install wandb' to enable logging.")
-        except Exception as e:
-            print(f"Warning: Failed to initialize wandb: {e}")
-
 def _should_log_now() -> bool:
     """Check if it's time to log based on time interval."""
     global _last_log_time
     current_time = time.time()
     return (current_time - _last_log_time) >= LOG_INTERVAL_SECONDS
 
-def _log_scores_to_wandb():
-    """Log real-time statistics to wandb."""
-    global _score_stats, _wandb_run, _last_log_time
+def _log_to_local_json(messages: List[dict], ground_truth: str, scores: Dict[str, float], final_score: float):
+    """Log both detailed sample and aggregated scores to a single local JSON file."""
+    global SAVE_DETAILED_SAMPLES, DETAILED_SAMPLES_DIR, _score_stats, _last_log_time
     
-    if not _wandb_initialized or _wandb_run is None:
+    if not SAVE_DETAILED_SAMPLES:
         return
     
     try:
-        import wandb
+        # Create comprehensive log entry
+        log_data = {
+            "call_count": _log_call_count,
+            "timestamp": time.time(),
+            "final_score": final_score,
+            "ground_truth": ground_truth,
+            "message_count": len(messages),
+            "user_message_count": len([m for m in messages if m.get('role') == 'user']),
+            "assistant_message_count": len([m for m in messages if m.get('role') == 'assistant']),
+            "log_type": "unified_log"
+        }
         
-        # Get real-time statistics for each score type
-        log_data = {}
+        # Add individual scores
+        for score_name, score_value in scores.items():
+            log_data[f"score_{score_name}"] = score_value
+        
+        # Add aggregated statistics for each score type
+        aggregated_stats = {}
         total_samples = 0
         
         for score_type, stats in _score_stats.items():
             stats_dict = stats.get_stats()
             if stats_dict["count"] > 0:
-                log_data[f"avg_{score_type}"] = stats_dict["avg"]
-                log_data[f"min_{score_type}"] = stats_dict["min"]
-                log_data[f"max_{score_type}"] = stats_dict["max"]
-                log_data[f"std_{score_type}"] = stats_dict["std"]
-                log_data[f"count_{score_type}"] = stats_dict["count"]
+                aggregated_stats[f"avg_{score_type}"] = stats_dict["avg"]
+                aggregated_stats[f"min_{score_type}"] = stats_dict["min"]
+                aggregated_stats[f"max_{score_type}"] = stats_dict["max"]
+                aggregated_stats[f"std_{score_type}"] = stats_dict["std"]
+                aggregated_stats[f"count_{score_type}"] = stats_dict["count"]
                 total_samples = max(total_samples, stats_dict["count"])
         
-        # Add call count and timestamp
-        log_data["total_call_count"] = _log_call_count
+        # Add aggregated statistics to log data
+        log_data["aggregated_stats"] = aggregated_stats
         log_data["total_samples"] = total_samples
-        log_data["timestamp"] = time.time()
+
+        # Add complete messages for detailed logging
+        log_data["complete_messages"] = messages
         
-        # Log to wandb
-        wandb.log(log_data)
+        # Create filename with integer timestamp and call count
+        timestamp_int = int(log_data["timestamp"])
+        filename = f"unified_log_{timestamp_int}_call_{_log_call_count}.json"
+        
+        # Ensure directory exists
+        os.makedirs(DETAILED_SAMPLES_DIR, exist_ok=True)
+        
+        # Save to local JSON file
+        filepath = os.path.join(DETAILED_SAMPLES_DIR, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, ensure_ascii=False, indent=2)
         
         # Reset statistics after logging
         for stats in _score_stats.values():
@@ -154,78 +152,19 @@ def _log_scores_to_wandb():
         # Update last log time
         _last_log_time = time.time()
         
-        print(f"Logged {len(log_data)} metrics to wandb at call {_log_call_count} (time-based logging)")
+        print(f"Unified log saved to: {filepath}")
+        print(f"  - Detailed sample with {len(messages)} messages")
+        print(f"  - {len(scores)} individual scores")
+        print(f"  - {len(aggregated_stats)} aggregated statistics")
         
     except Exception as e:
-        print(f"Warning: Failed to log to wandb: {e}")
+        print(f"Warning: Failed to save unified log to local file: {e}")
 
-def _log_detailed_sample(messages: List[dict], ground_truth: str, scores: Dict[str, float], final_score: float):
-    """Log a detailed sample with full messages and scores to local JSON file for inspection (called on time interval)."""
-    global SAVE_DETAILED_SAMPLES, DETAILED_SAMPLES_DIR
-    
-    if not SAVE_DETAILED_SAMPLES:
-        return
-    
-    try:
-        # Create a detailed log entry
-        sample_data = {
-            "call_count": _log_call_count,
-            "timestamp": time.time(),
-            "final_score": final_score,
-            "ground_truth": ground_truth,
-            "message_count": len(messages),
-            "user_message_count": len([m for m in messages if m.get('role') == 'user']),
-            "assistant_message_count": len([m for m in messages if m.get('role') == 'assistant']),
-        }
-        
-        # Add individual scores
-        for score_name, score_value in scores.items():
-            sample_data[f"score_{score_name}"] = score_value
-        
-        # Add complete messages for detailed logging
-        sample_data["complete_messages"] = messages
-        
-        # Create filename with integer timestamp and call count
-        timestamp_int = int(sample_data["timestamp"])
-        filename = f"detailed_sample_{timestamp_int}_call_{_log_call_count}.json"
-        
-        # Ensure directory exists
-        os.makedirs(DETAILED_SAMPLES_DIR, exist_ok=True)
-        
-        # Save to local JSON file
-        filepath = os.path.join(DETAILED_SAMPLES_DIR, filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(sample_data, f, ensure_ascii=False, indent=2)
-        
-        print(f"Detailed sample saved to: {filepath}")
-        
-    except Exception as e:
-        print(f"Warning: Failed to save detailed sample to local file: {e}")
 
-def finish_wandb_logging():
-    """Finish the wandb run and flush any remaining buffered data."""
-    global _wandb_initialized, _wandb_run, _score_stats, _log_call_count
-    
-    if _wandb_initialized and _wandb_run is not None:
-        try:
-            import wandb
-            
-            # Log any remaining statistics
-            if any(stats.get_stats()["count"] > 0 for stats in _score_stats.values()):
-                _log_scores_to_wandb()
-            
-            # Finish the wandb run
-            wandb.finish()
-            _wandb_initialized = False
-            _wandb_run = None
-            print("Wandb logging finished.")
-            
-        except Exception as e:
-            print(f"Warning: Failed to finish wandb logging: {e}")
 
 def get_logging_stats():
     """Get current logging statistics."""
-    global _log_call_count, _score_stats, _wandb_initialized, _last_log_time
+    global _log_call_count, _score_stats, _last_log_time
     
     # Calculate next log time
     next_log_time = _last_log_time + LOG_INTERVAL_SECONDS
@@ -234,7 +173,6 @@ def get_logging_stats():
     
     stats = {
         "total_calls": _log_call_count,
-        "wandb_initialized": _wandb_initialized,
         "log_interval_seconds": LOG_INTERVAL_SECONDS,
         "save_detailed_samples": SAVE_DETAILED_SAMPLES,
         "detailed_samples_dir": DETAILED_SAMPLES_DIR,
@@ -249,14 +187,12 @@ def get_logging_stats():
 
 def reset_logging_state():
     """Reset the logging state (useful for testing or restarting logging)."""
-    global _log_call_count, _score_stats, _wandb_initialized, _wandb_run, _last_log_time
+    global _log_call_count, _score_stats, _last_log_time
     
     _log_call_count = 0
     _last_log_time = 0.0
     for stats in _score_stats.values():
         stats.reset()
-    _wandb_initialized = False
-    _wandb_run = None
     print("Logging state reset.")
 
 
@@ -677,7 +613,7 @@ def compute_score(messages: List[dict],
         ttfa_ratio_max_reward_point (float): Point where score reaches 1.0
         ttfa_ratio_base_score (float): Minimum score when early_ratio = target_min
         stage (str): 'format' for format stage, 'final' for full evaluation stage
-        log (bool): Whether to enable wandb logging
+        log (bool): Whether to enable local JSON logging
     Returns:
         float: The final weighted score
     """
@@ -719,9 +655,6 @@ def compute_score(messages: List[dict],
     # Handle logging if enabled
     if log:
         _log_call_count += 1
-
-        # Initialize wandb if needed (for aggregated scores)
-        _init_wandb()
         
         # Collect all scores for logging
         scores = {
@@ -748,8 +681,7 @@ def compute_score(messages: List[dict],
         
         # Log detailed sample and aggregated scores based on time interval
         if _should_log_now():
-            _log_detailed_sample(messages, ground_truth, scores, final_score)
-            _log_scores_to_wandb()
+            _log_to_local_json(messages, ground_truth, scores, final_score)
 
     return final_score
 
@@ -1456,8 +1388,8 @@ def test_compute_score():
 
     print("compute_score tests passed.")
 
-def test_wandb_logging():
-    """Test time-based logging functionality (wandb + local detailed samples)."""
+def test_local_json_logging():
+    """Test time-based logging functionality (local JSON files for both detailed samples and aggregated scores)."""
     global LOG_INTERVAL_SECONDS
     
     print("Testing time-based logging...")
@@ -1486,8 +1418,7 @@ def test_wandb_logging():
     
     print("Starting time-based logging test...")
     print("Log interval set to 3 seconds")
-    print("Detailed samples will be saved to local JSON files")
-    print("Aggregated scores will be logged to wandb")
+    print("Unified logs (detailed samples + aggregated scores) will be saved to local JSON files")
     
     # Run multiple calls to test time-based logging
     for i in range(15):
@@ -1510,8 +1441,7 @@ def test_wandb_logging():
         # Wait 1 second between calls
         time.sleep(1)
     
-    print("\nTest completed. Cleaning up...")
-    finish_wandb_logging()
+    print("\nTest completed.")
     
     # Restore original interval
     LOG_INTERVAL_SECONDS = original_interval
@@ -1535,13 +1465,7 @@ def main():
     test_compute_ttfa_early_ratio_score()
     test_compute_ttfa_length_score()
     test_compute_score()
-    
-    # Test wandb logging (only if wandb is available)
-    try:
-        import wandb
-        test_wandb_logging()
-    except ImportError:
-        print("Skipping wandb logging test (wandb not available)")
+    test_local_json_logging()
     
     print("All tests passed.")
 
