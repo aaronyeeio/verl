@@ -832,13 +832,12 @@ class SGLangRollout(BaseRollout):
         request_sampling_params.update(kwargs)
 
         while current_turns < self.config.multi_turn.max_assistant_turns:
-            current_turn_data = {
-                "current_turns": current_turns,
-                "user_turns": user_turns,
-                "request_sampling_params": request_sampling_params,
-            }
             if _req.state == AsyncRolloutRequestStateEnum.PENDING:
-                await self._handle_pending_state(_req, current_turn_data)
+                await self._handle_pending_state(_req, {
+                    "current_turns": current_turns,
+                    "user_turns": user_turns,
+                    "request_sampling_params": request_sampling_params,
+                })
                 _req.state = AsyncRolloutRequestStateEnum.RUNNING
             elif _req.state == AsyncRolloutRequestStateEnum.TOOL_CALLING:
                 if _req.messages[-1].tool_calls is not None:
@@ -962,7 +961,11 @@ class SGLangRollout(BaseRollout):
 
                 interaction = self.interaction_map[interaction_name]
                 should_terminate_sequence, content, reward, metrics = await interaction.generate_response(
-                    _req.request_id, current_turn_data, messages, **_req.interaction_kwargs
+                    _req.request_id, {
+                        "current_turns": current_turns,
+                        "user_turns": user_turns,
+                        "request_sampling_params": request_sampling_params,
+                    }, messages, **_req.interaction_kwargs
                 )
                 user_turn_rewards.append(reward)
                 if should_terminate_sequence:
